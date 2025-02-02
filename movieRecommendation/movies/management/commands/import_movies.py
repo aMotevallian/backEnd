@@ -15,35 +15,31 @@ class Command(BaseCommand):
             reader = csv.DictReader(csvfile)
             
             for row in reader:
-                # Define the important fields that must not be null or empty
                 important_fields = ['title', 'overview', 'poster_path', 'backdrop_path', 'release_date', 'keywords']
                 missing_fields = [field for field in important_fields if not row[field].strip()]
 
-                # Skip the row if any important field is missing
                 if missing_fields:
                     self.stdout.write(
                         self.style.WARNING(f"Skipping movie due to missing fields ({', '.join(missing_fields)}): {row.get('title', 'Unknown Title')}")
                     )
-                    continue  # Skip this row
+                    continue 
 
-                # Handle date format and skip rows with invalid dates
                 release_date = None
                 if row['release_date']:
                     try:
                         release_date = datetime.strptime(row['release_date'], '%Y-%m-%d').date()
                     except ValueError:
                         self.stdout.write(self.style.WARNING(f"Invalid date format for movie: {row['title']} - Skipping"))
-                        continue  # Skip this row if the date is invalid
+                        continue  
 
-                # Update or create the movie record
                 movie, created = Movie.objects.update_or_create(
-                    id=row['id'],  # Check for the movie by ID
+                    id=row['id'],
                     defaults={
                         'title': row['title'],
                         'vote_average': row['vote_average'],
                         'vote_count': row['vote_count'],
                         'status': row['status'],
-                        'release_date': release_date,  # Safe to assign None if the date is invalid
+                        'release_date': release_date,
                         'revenue': row['revenue'],
                         'runtime': row['runtime'],
                         'adult': row['adult'].lower() == 'true',

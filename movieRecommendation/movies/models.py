@@ -44,8 +44,8 @@ class MovieRating(models.Model):
 
 class WatchLater(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    movie_id = models.IntegerField()
+    movie = models.ForeignKey('movies.Movie', on_delete=models.CASCADE)  # تغییر movie_id به ForeignKey
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.user.username} - Movie {self.movie_id}"
+        return f"{self.user.username} - {self.movie.title}"

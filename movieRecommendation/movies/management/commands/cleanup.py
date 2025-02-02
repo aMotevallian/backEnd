@@ -9,7 +9,7 @@ class Command(BaseCommand):
         offensive_words = [
             "fuck", "cock", "bitch", "slut", "sex", "porn", "naked", "damn", "shit",
             "asshole", "dick", "pussy", "whore", "f**k", "c*", "f*", "s*", "bdsm",
-            "pu*", "b*", "bitch"
+            "pu*", "b*", "bitch", "Sexy", "Sex"
         ]
         escaped_words = [re.escape(word) for word in offensive_words]
 
@@ -45,21 +45,15 @@ class Command(BaseCommand):
         low_vote_movies.delete()
         self.stdout.write(f"Deleted {low_vote_count} movies with less than 100 votes.")
 
-        # 5. Remove movies with offensive words in keywords or overview
         offensive_movies = Movie.objects.filter(
             keywords__iregex=offensive_pattern.pattern
         ) | Movie.objects.filter(
             overview__iregex=offensive_pattern.pattern
+        )| Movie.objects.filter(
+            title__iregex=offensive_pattern.pattern
         )
         offensive_count = offensive_movies.count()
         offensive_movies.delete()
         self.stdout.write(f"Deleted {offensive_count} movies with offensive content.")
 
-        # 6. Remove movies with IMDb rating less than 3
-        # low_rated_movies = Movie.objects.filter(vote_average__lt=3)
-        # low_rating_count = low_rated_movies.count()
-        # low_rated_movies.delete()
-        # self.stdout.write(f"Deleted {low_rating_count} movies with IMDb rating less than 3.")
-
-        # Final cleanup confirmation
         self.stdout.write("Dataset cleanup complete.")

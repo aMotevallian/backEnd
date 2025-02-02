@@ -15,6 +15,7 @@ from rest_framework.permissions import IsAuthenticated
 @api_view(['GET'])
 def get_movie_recommendations(request ,movie_id):
     try:
+        print("cb")
         movies = Movie.objects.all()
         if not movies:
             return []
@@ -44,8 +45,6 @@ def get_movie_recommendations(request ,movie_id):
     except Exception as e:
         raise ValueError(f"Error in recommendation: {str(e)}")
 
-
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
@@ -71,29 +70,31 @@ def recommend_movies_for_user(request):
 @authentication_classes([TokenAuthentication])
 def hybrid_recommendation(request):
     try:
-        # Step 1: Collaborative filtering
         user = request.user
         user_id = user.id
         user_movie_matrix = get_user_movie_matrix()
+
         similarity_df = calculate_user_similarity(user_movie_matrix)
-        recommendations = recommend_movies(user_id, user_movie_matrix, similarity_df)
-
-        if recommendations.empty:
-            # Step 2: Fallback to content-based filtering
-            user_ratings = MovieRating.objects.filter(user_id=user_id).order_by('-rating')
-            if user_ratings.exists():
-                first_movie = user_ratings.first().movie
-                recommended_movies = get_movie_recommendations(first_movie.id)
-            else:
-                # Step 3: Fallback to popularity-based
-                recommended_movies = Movie.objects.filter(
-                    Q(vote_count__gte=50) & Q(release_date__year__gte=2020)
-                ).order_by('-popularity', '-vote_average')[:10]
+        collaborative_recommendations = recommend_movies(user_id, user_movie_matrix, similarity_df, num_recommendations=20)
+        user_ratings = MovieRating.objects.filter(user_id=user_id).order_by('-rating')
+        if user_ratings.exists():
+            first_movie = user_ratings.first().movie
+            content_based_recommendations = get_movie_recommendations(request._request, first_movie.id).data
         else:
-            recommended_movie_ids = recommendations.index.tolist()
-            recommended_movies = Movie.objects.filter(id__in=recommended_movie_ids)
+            content_based_recommendations = []
+        combined_scores = {}
+        for movie_id in collaborative_recommendations:
+            combined_scores[(movie_id)] = combined_scores.get(movie_id, 0) + 0.7  
 
+        for movie in content_based_recommendations:
+            movie_id = movie["id"]
+            combined_scores[movie_id] = combined_scores.get(movie_id, 0) + 0.3 
+        sorted_movies = sorted(combined_scores.items(), key=lambda x: x[1], reverse=True)
+        recommended_movie_ids = [movie_id for movie_id, _ in sorted_movies[:10]]
+
+        recommended_movies = Movie.objects.filter(id__in=recommended_movie_ids)
         serializer = MovieSerializer(recommended_movies, many=True)
         return Response(serializer.data)
+
     except Exception as e:
         return Response({"error": str(e)}, status=400)

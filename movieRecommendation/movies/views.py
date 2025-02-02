@@ -1,11 +1,15 @@
 # movies/views.py
-from rest_framework.decorators import api_view , authentication_classes
+from rest_framework.decorators import api_view , authentication_classes,permission_classes
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from .models import Movie
 from .serializers import MovieSerializer
 from rest_framework.authentication import TokenAuthentication
-
+from rest_framework.permissions import IsAuthenticated
+from .models import MovieRating
+import random
+from rest_framework import status
+from django.contrib.auth.models import User 
 from .models import WatchLater
 @api_view(['GET'])
 def movie_list(request):
@@ -29,17 +33,7 @@ def get_movie_by_id(request, movie_id):
         return Response(serializer.data, status=200)
     except Movie.DoesNotExist:
         return Response({'error': 'Movie not found'}, status=404)
-# @api_view(['GET'])
-# def get_movies_by_genre(request, genre):
-#     """
-#     Retrieve movies by a specific genre.
-#     """
-#     movies = Movie.objects.filter(genres__icontains=genre).only('id', 'title', 'poster_path', 'release_date', 'overview')
-#     paginator = PageNumberPagination()
-#     paginator.page_size = 10
-#     paginated_movies = paginator.paginate_queryset(movies, request)
-#     serializer = MovieSerializer(paginated_movies, many=True)
-#     return paginator.get_paginated_response(serializer.data)
+
 @api_view(['GET'])
 def get_movies_by_year(request, year):
     """
@@ -66,14 +60,6 @@ def search_movies(request):
     paginated_movies = paginator.paginate_queryset(movies, request)
     serializer = MovieSerializer(paginated_movies, many=True)
     return paginator.get_paginated_response(serializer.data)
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.response import Response
-from rest_framework.pagination import PageNumberPagination
-from rest_framework.permissions import IsAuthenticated
-from .models import Movie
-from .models import MovieRating
-from .serializers import MovieSerializer
-import random
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -86,11 +72,9 @@ def get_random_unrated_movies(request):
     rated_movie_ids = MovieRating.objects.filter(user=user).values_list('movie_id', flat=True)
     unrated_movies = Movie.objects.exclude(id__in=rated_movie_ids)
 
-    # ترتیب تصادفی
     unrated_movies = list(unrated_movies)
     random.shuffle(unrated_movies)
 
-    # صفحه‌بندی
     paginator = PageNumberPagination()
     paginator.page_size = 10
     paginated_movies = paginator.paginate_queryset(unrated_movies, request)
@@ -108,13 +92,6 @@ def get_random_unrated_movies(request):
 
     return paginator.get_paginated_response(movie_data)
 
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework import status
-from django.contrib.auth.models import User  # مدل پیش‌فرض User
-from .models import Movie, MovieRating
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @authentication_classes([TokenAuthentication])
@@ -122,23 +99,20 @@ def rate_movie(request):
     """
     ذخیره یا به‌روزرسانی رتبه‌بندی یک فیلم توسط کاربر.
     """
-    user = request.user  # کاربر احراز هویت‌شده
+    user = request.user  
     movie_id = request.data.get('movie_id')
     rating = request.data.get('rating')
 
-    # بررسی اعتبار داده‌ها
     if not movie_id or not rating:
         return Response({'error': 'Movie ID and rating are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
     if not (1 <= int(rating) <= 5):
         return Response({'error': 'Rating must be between 1 and 5.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # بررسی وجود فیلم
     movie = Movie.objects.filter(id=movie_id).first()
     if not movie:
         return Response({'error': 'Movie not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    # ذخیره یا به‌روزرسانی رتبه‌بندی
     rating_obj, created = MovieRating.objects.update_or_create(
         user=user,
         movie=movie,
@@ -227,3 +201,56 @@ def get_watch_later_status(request, movie_id):
     user = request.user
     exists = WatchLater.objects.filter(user=user, movie_id=movie_id).exists()
     return Response({"saved": exists})
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def get_watch_later_movies(request):
+    """
+    Retrieve the list of movies in the user's Watch Later.
+    """
+    user = request.user
+    watch_later_movies = WatchLater.objects.filter(user=user).select_related('movie')
+
+    paginator = PageNumberPagination()
+    paginator.page_size = 100
+    paginated_movies = paginator.paginate_queryset(watch_later_movies, request)
+
+    movie_data = [
+        {
+            'id': item.movie.id,
+            'title': item.movie.title,
+            'release_date': item.movie.release_date,
+            'poster_path': item.movie.poster_path,
+            'overview': item.movie.overview,
+        }
+        for item in paginated_movies
+    ]
+
+    return paginator.get_paginated_response(movie_data)
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def get_rated_movies(request):
+    """
+    Retrieve the list of movies rated by the user.
+    """
+    user = request.user
+    rated_movies = MovieRating.objects.filter(user=user).select_related('movie')
+
+    paginator = PageNumberPagination()
+    paginator.page_size = 100
+    paginated_ratings = paginator.paginate_queryset(rated_movies, request)
+
+    movie_data = [
+        {
+            'id': rating.movie.id,
+            'title': rating.movie.title,
+            'release_date': rating.movie.release_date,
+            'poster_path': rating.movie.poster_path,
+            'overview': rating.movie.overview,
+            'rating': rating.rating,
+        }
+        for rating in paginated_ratings
+    ]
+
+    return paginator.get_paginated_response(movie_data)
